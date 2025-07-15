@@ -65,6 +65,7 @@ def mmseqs_search_monomer(
     threads: int = 32,
     gpu: int = 0,
     gpu_server: int = 0,
+    split: int = 0,
     unpack: bool = True,
 ):
     """Run mmseqs with a local colabfold database set
@@ -107,6 +108,7 @@ def mmseqs_search_monomer(
             dbSuffix3 = ".idx"
 
     search_param = ["--num-iterations", "3", "--db-load-mode", str(db_load_mode), "-a", "-e", "0.1", "--max-seqs", "10000"]
+    search_param += ["--split", str(split)]
     if gpu:
         search_param += ["--gpu", str(gpu), "--prefilter-mode", "1"] # gpu version only supports ungapped prefilter currently
     else:
@@ -217,6 +219,7 @@ def mmseqs_search_pair(
     gpu_server: bool = False,
     db_load_mode: int = 2,
     pairing_strategy: int = 0,
+    split: int = 0,
     unpack: bool = True,
 ):
     if not dbbase.joinpath(f"{uniref_db}.dbtype").is_file():
@@ -256,6 +259,7 @@ def mmseqs_search_pair(
             search_param += ["--k-score", "'seq:96,prof:80'"]
     if gpu_server:
         search_param += ["--gpu-server", str(gpu_server)]
+    search_param += ["--split", str(split)]
     expand_param = ["--expansion-mode", "0", "-e", "inf", "--expand-filter-clusters", "0", "--max-seq-id", "0.95",]
     run_mmseqs(mmseqs, ["search", base.joinpath("qdb"), dbbase.joinpath(db), base.joinpath("res"), base.joinpath("tmp"), "--threads", str(threads),] + search_param,)
     run_mmseqs(mmseqs, ["expandaln", base.joinpath("qdb"), dbbase.joinpath(f"{db}{dbSuffix1}"), base.joinpath("res"), dbbase.joinpath(f"{db}{dbSuffix2}"), base.joinpath("res_exp"), "--db-load-mode", str(db_load_mode), "--threads", str(threads),] + expand_param,)
@@ -392,6 +396,9 @@ def main():
     parser.add_argument(
         "--gpu-server", type=int, default=0, choices=[0, 1], help="Whether to use GPU server (1) or not (0)"
     )
+    parser.add_argument(
+        "--split", type=int, default=0, help="Number of splits for database preprocessing. 0 means automatic split. Increase if you run out of memory."
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level = logging.INFO)
@@ -467,6 +474,7 @@ def main():
         threads=args.threads,
         gpu=args.gpu,
         gpu_server=args.gpu_server,
+        split=args.split,
         unpack=args.unpack,
     )
     if is_complex is True:
@@ -483,6 +491,7 @@ def main():
             gpu_server=args.gpu_server,
             pairing_strategy=args.pairing_strategy,
             pair_env=False,
+            split=args.split,
             unpack=args.unpack,
         )
         if args.use_env_pairing:
@@ -500,6 +509,7 @@ def main():
                 gpu_server=args.gpu_server,
                 pairing_strategy=args.pairing_strategy,
                 pair_env=True,
+                split=args.split,
                 unpack=args.unpack,
             )
 
