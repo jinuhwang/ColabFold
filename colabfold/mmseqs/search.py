@@ -56,6 +56,7 @@ def mmseqs_search_monomer(
     filter: bool = True,
     expand_eval: float = math.inf,
     align_eval: int = 10,
+    search_eval: float = 0.1,
     diff: int = 3000,
     qsc: float = -20.0,
     max_accept: int = 1000000,
@@ -67,6 +68,9 @@ def mmseqs_search_monomer(
     gpu_server: int = 0,
     split: int = 0,
     unpack: bool = True,
+    num_iterations: int = 3,
+    search_type: int = None,
+    min_aln_len: int = None,
 ):
     """Run mmseqs with a local colabfold database set
 
@@ -107,8 +111,10 @@ def mmseqs_search_monomer(
             dbSuffix2 = ".idx"
             dbSuffix3 = ".idx"
 
-    search_param = ["--num-iterations", "3", "--db-load-mode", str(db_load_mode), "-a", "-e", "0.1", "--max-seqs", "10000"]
+    search_param = ["--num-iterations", str(num_iterations), "--db-load-mode", str(db_load_mode), "-a", "-e", str(search_eval), "--max-seqs", "10000"]
     search_param += ["--split", str(split)]
+    if search_type is not None:
+        search_param += ["--search-type", str(search_type)]
     if gpu:
         search_param += ["--gpu", str(gpu), "--prefilter-mode", "1"] # gpu version only supports ungapped prefilter currently
     else:
@@ -128,7 +134,10 @@ def mmseqs_search_monomer(
         run_mmseqs(mmseqs, ["mvdb", base.joinpath("tmp/latest/profile_1"), base.joinpath("prof_res")])
         run_mmseqs(mmseqs, ["lndb", base.joinpath("qdb_h"), base.joinpath("prof_res_h")])
         run_mmseqs(mmseqs, ["expandaln", base.joinpath("qdb"), dbbase.joinpath(f"{uniref_db}{dbSuffix1}"), base.joinpath("res"), dbbase.joinpath(f"{uniref_db}{dbSuffix2}"), base.joinpath("res_exp"), "--db-load-mode", str(db_load_mode), "--threads", str(threads)] + expand_param)
-        run_mmseqs(mmseqs, ["align", base.joinpath("prof_res"), dbbase.joinpath(f"{uniref_db}{dbSuffix1}"), base.joinpath("res_exp"), base.joinpath("res_exp_realign"), "--db-load-mode", str(db_load_mode), "-e", str(align_eval), "--max-accept", str(max_accept), "--threads", str(threads), "--alt-ali", "10", "-a"])
+        align_param = ["--db-load-mode", str(db_load_mode), "-e", str(align_eval), "--max-accept", str(max_accept), "--threads", str(threads), "--alt-ali", "10", "-a"]
+        if min_aln_len is not None:
+            align_param += ["--min-aln-len", str(min_aln_len)]
+        run_mmseqs(mmseqs, ["align", base.joinpath("prof_res"), dbbase.joinpath(f"{uniref_db}{dbSuffix1}"), base.joinpath("res_exp"), base.joinpath("res_exp_realign")] + align_param)
         run_mmseqs(mmseqs, ["filterresult", base.joinpath("qdb"), dbbase.joinpath(f"{uniref_db}{dbSuffix1}"),
                             base.joinpath("res_exp_realign"), base.joinpath("res_exp_realign_filter"), "--db-load-mode",
                             str(db_load_mode), "--qid", "0", "--qsc", str(qsc), "--diff", "0", "--threads",
@@ -149,12 +158,15 @@ def mmseqs_search_monomer(
         run_mmseqs(mmseqs, ["expandaln", base.joinpath("prof_res"), dbbase.joinpath(f"{metagenomic_db}{dbSuffix1}"), base.joinpath("res_env"),
                             dbbase.joinpath(f"{metagenomic_db}{dbSuffix2}"), base.joinpath("res_env_exp"), "-e", str(expand_eval),
                             "--expansion-mode", "0", "--db-load-mode", str(db_load_mode), "--threads", str(threads)])
-        run_mmseqs(mmseqs, ["align", base.joinpath("tmp3/latest/profile_1"), dbbase.joinpath(f"{metagenomic_db}{dbSuffix1}"),
-                            base.joinpath("res_env_exp"), base.joinpath("res_env_exp_realign"), "--db-load-mode",
+        align_param = ["--db-load-mode",
                             str(db_load_mode), "-e", str(align_eval), "--max-accept", str(max_accept), "--threads",
-                            str(threads), "--alt-ali", "10", "-a"])
+                            str(threads), "--alt-ali", "10", "-a"]
+        if min_aln_len is not None:
+            align_param += ["--min-aln-len", str(min_aln_len)]
+        run_mmseqs(mmseqs, ["align", base.joinpath("tmp3/latest/profile_1"), dbbase.joinpath(f"{metagenomic_db}{dbSuffix1}"),
+                            base.joinpath("res_env_exp"), base.joinpath("res_env_exp_realign")] + align_param)
         run_mmseqs(mmseqs, ["filterresult", base.joinpath("qdb"), dbbase.joinpath(f"{metagenomic_db}{dbSuffix1}"),
-                            base.joinpath("res_env_exp_realign"), base.joinpath("res_env_exp_realign_filter"),
+                             base.joinpath("res_env_exp_realign"), base.joinpath("res_env_exp_realign_filter"),
                             "--db-load-mode", str(db_load_mode), "--qid", "0", "--qsc", str(qsc), "--diff", "0",
                             "--max-seq-id", "1.0", "--threads", str(threads), "--filter-min-enable", "100"])
         run_mmseqs(mmseqs, ["result2msa", base.joinpath("qdb"), dbbase.joinpath(f"{metagenomic_db}{dbSuffix1}"),
@@ -221,6 +233,10 @@ def mmseqs_search_pair(
     pairing_strategy: int = 0,
     split: int = 0,
     unpack: bool = True,
+    search_eval: float = 0.1,
+    num_iterations: int = 3,
+    search_type: int = None,
+    min_aln_len: int = None,
 ):
     if not dbbase.joinpath(f"{uniref_db}.dbtype").is_file():
         raise FileNotFoundError(f"Database {uniref_db} does not exist")
@@ -248,7 +264,9 @@ def mmseqs_search_pair(
 
     # fmt: off
     # @formatter:off
-    search_param = ["--num-iterations", "3", "--db-load-mode", str(db_load_mode), "-a", "-e", "0.1", "--max-seqs", "10000",]
+    search_param = ["--num-iterations", str(num_iterations), "--db-load-mode", str(db_load_mode), "-a", "-e", str(search_eval), "--max-seqs", "10000",]
+    if search_type is not None:
+        search_param += ["--search-type", str(search_type)]
     if gpu:
         search_param += ["--gpu", str(gpu), "--prefilter-mode", "1"] # gpu version only supports ungapped prefilter currently
     else:
@@ -263,7 +281,10 @@ def mmseqs_search_pair(
     expand_param = ["--expansion-mode", "0", "-e", "inf", "--expand-filter-clusters", "0", "--max-seq-id", "0.95",]
     run_mmseqs(mmseqs, ["search", base.joinpath("qdb"), dbbase.joinpath(db), base.joinpath("res"), base.joinpath("tmp"), "--threads", str(threads),] + search_param,)
     run_mmseqs(mmseqs, ["expandaln", base.joinpath("qdb"), dbbase.joinpath(f"{db}{dbSuffix1}"), base.joinpath("res"), dbbase.joinpath(f"{db}{dbSuffix2}"), base.joinpath("res_exp"), "--db-load-mode", str(db_load_mode), "--threads", str(threads),] + expand_param,)
-    run_mmseqs(mmseqs, ["align", base.joinpath("qdb"), dbbase.joinpath(f"{db}{dbSuffix1}"), base.joinpath("res_exp"), base.joinpath("res_exp_realign"), "--db-load-mode", str(db_load_mode), "-e", "0.001", "--max-accept", "1000000", "--threads", str(threads), "-c", "0.5", "--cov-mode", "1",],)
+    align_param = ["--db-load-mode", str(db_load_mode), "-e", "0.001", "--max-accept", "1000000", "--threads", str(threads), "-c", "0.5", "--cov-mode", "1",]
+    if min_aln_len is not None:
+        align_param += ["--min-aln-len", str(min_aln_len)]
+    run_mmseqs(mmseqs, ["align", base.joinpath("qdb"), dbbase.joinpath(f"{db}{dbSuffix1}"), base.joinpath("res_exp"), base.joinpath("res_exp_realign")] + align_param)
     run_mmseqs(mmseqs, ["pairaln", base.joinpath("qdb"), dbbase.joinpath(f"{db}"), base.joinpath("res_exp_realign"), base.joinpath("res_exp_realign_pair"), "--db-load-mode", str(db_load_mode), "--pairing-mode", str(pairing_strategy), "--pairing-dummy-mode", "0", "--threads", str(threads), ],)
     run_mmseqs(mmseqs, ["align", base.joinpath("qdb"), dbbase.joinpath(f"{db}{dbSuffix1}"), base.joinpath("res_exp_realign_pair"), base.joinpath("res_exp_realign_pair_bt"), "--db-load-mode", str(db_load_mode), "-e", "inf", "-a", "--threads", str(threads), ],)
     run_mmseqs(mmseqs, ["pairaln", base.joinpath("qdb"), dbbase.joinpath(f"{db}"), base.joinpath("res_exp_realign_pair_bt"), base.joinpath("res_final"), "--db-load-mode", str(db_load_mode), "--pairing-mode", str(pairing_strategy), "--pairing-dummy-mode", "1", "--threads", str(threads),],)
@@ -349,6 +370,7 @@ def main():
         help="Location of the mmseqs binary.",
     )
     parser.add_argument(
+        "-e",
         "--expand-eval",
         type=float,
         default=math.inf,
@@ -356,6 +378,9 @@ def main():
     )
     parser.add_argument(
         "--align-eval", type=int, default=10, help="e-val threshold for 'align'."
+    )
+    parser.add_argument(
+        "--search-eval", type=float, default=0.1, help="e-val threshold for 'search'."
     )
     parser.add_argument(
         "--diff",
@@ -374,6 +399,22 @@ def main():
         type=int,
         default=1000000,
         help="align - Maximum accepted alignments before alignment calculation for a query is stopped.",
+    )
+    parser.add_argument(
+        "--num-iterations",
+        type=int,
+        default=3,
+        help="Number of iterations for 'search'.",
+    )
+    parser.add_argument(
+        "--search-type",
+        type=int,
+        help="search - 1:protein->p-p, 2:translated->n-p, 3:protein->n-p",
+    )
+    parser.add_argument(
+        "--min-aln-len",
+        type=int,
+        help="align - Minimum alignment length.",
     )
     parser.add_argument(
         "--pairing_strategy", type=int, default=0, help="pairaln - Pairing strategy."
@@ -476,6 +517,10 @@ def main():
         gpu_server=args.gpu_server,
         split=args.split,
         unpack=args.unpack,
+        search_eval=args.search_eval,
+        num_iterations=args.num_iterations,
+        search_type=args.search_type,
+        min_aln_len=args.min_aln_len,
     )
     if is_complex is True:
         mmseqs_search_pair(
@@ -493,6 +538,10 @@ def main():
             pair_env=False,
             split=args.split,
             unpack=args.unpack,
+            search_eval=args.search_eval,
+            num_iterations=args.num_iterations,
+            search_type=args.search_type,
+            min_aln_len=args.min_aln_len,
         )
         if args.use_env_pairing:
             mmseqs_search_pair(
@@ -511,6 +560,10 @@ def main():
                 pair_env=True,
                 split=args.split,
                 unpack=args.unpack,
+                search_eval=args.search_eval,
+                num_iterations=args.num_iterations,
+                search_type=args.search_type,
+                min_aln_len=args.min_aln_len,
             )
 
         if args.unpack:
