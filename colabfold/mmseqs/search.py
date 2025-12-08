@@ -355,6 +355,11 @@ def main():
         "--use-templates", type=int, default=0, choices=[0, 1], help="Use --db2"
     )
     parser.add_argument(
+        "--keep-duplicates",
+        action="store_true",
+        help="Keep duplicate input queries instead of collapsing identical sequences.",
+    )
+    parser.add_argument(
         "--filter",
         type=int,
         default=1,
@@ -446,20 +451,33 @@ def main():
 
     queries, is_complex = get_queries(args.query, None)
 
+    def _env_flag(value):
+        if value is None:
+            return False
+        text = str(value).strip().lower()
+        return text in {"1", "true", "yes", "on"}
+
+    env_keep_duplicates = os.environ.get("COLABFOLD_KEEP_DUPLICATES") or os.environ.get("ALLOW_DUPLICATE_QUERIES")
+    keep_duplicates = _env_flag(env_keep_duplicates) or bool(args.keep_duplicates)
+
     queries_unique = []
     for job_number, (raw_jobname, query_sequences, a3m_lines) in enumerate(queries):
         # remove duplicates before searching
         query_sequences = (
             [query_sequences] if isinstance(query_sequences, str) else query_sequences
         )
-        query_seqs_unique = []
-        for x in query_sequences:
-            if x not in query_seqs_unique:
-                query_seqs_unique.append(x)
-        query_seqs_cardinality = [0] * len(query_seqs_unique)
-        for seq in query_sequences:
-            seq_idx = query_seqs_unique.index(seq)
-            query_seqs_cardinality[seq_idx] += 1
+        if keep_duplicates:
+            query_seqs_unique = list(query_sequences)
+            query_seqs_cardinality = [1] * len(query_sequences)
+        else:
+            query_seqs_unique = []
+            for x in query_sequences:
+                if x not in query_seqs_unique:
+                    query_seqs_unique.append(x)
+            query_seqs_cardinality = [0] * len(query_seqs_unique)
+            for seq in query_sequences:
+                seq_idx = query_seqs_unique.index(seq)
+                query_seqs_cardinality[seq_idx] += 1
 
         queries_unique.append([raw_jobname, query_seqs_unique, query_seqs_cardinality])
 
